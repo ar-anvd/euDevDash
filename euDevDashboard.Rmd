@@ -1,0 +1,140 @@
+---
+# https://affliction123.github.io/euDevDash/
+title: "EU DEV Jobs  Dashboard v1"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: column
+    vertical_layout: fill
+    theme: cosmo
+    source_code: embed
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(rworldmap)
+library(dplyr)
+library(ggmap)
+library(DT)
+library(stringr)
+
+dat1 <- read.csv("/Users/Dovla/Desktop/EUdevs2.csv", header = TRUE, sep = ",")
+
+temp201 <- dat1 %>% 
+  filter(Count != "2 No") %>%
+  select(Country, GrossEUR) %>%
+  group_by(Country) %>%
+  summarise(AverageGrossSalaryEUR = mean(GrossEUR), Employees = length(GrossEUR))
+
+apdf1 <- joinCountryData2Map(temp201, joinCode="NAME", nameJoinColumn="Country")
+
+```
+Main
+===================================== 
+
+Column {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+### Average salary
+```{r echo=FALSE, warning=FALSE, error = FALSE, message=FALSE}
+bpdf1 <- as.data.frame(apdf1)
+geoData <- bpdf1[c("NAME","LON","LAT", "AverageGrossSalaryEUR","Employees")]
+geoData2 <- na.omit(geoData)
+geoData2 <- geoData2 %>%
+    mutate(Country=as.character(NAME))
+geoData2$Country[6] <- 'Czech Republic'
+geoData2$Country[13] <- 'UK'
+
+map.world <- map_data("world")
+map.world_joined <- left_join(map.world, geoData2, by = c('region' = 'Country'))
+                                                 country_coord<-data.frame(coordinates(apdf1),stringsAsFactors=F)
+row.names(country_coord)[19] <- 'B&H'
+row.names(country_coord)[146] <- 'Serbia'
+
+map1 <- ggplot() +
+  geom_polygon(data = map.world_joined, aes(x = long, y = lat, group = group, fill=AverageGrossSalaryEUR)) +
+ geom_text(data=country_coord, aes(x=X1, y=X2, label=row.names(country_coord)), size=2, colour="black") +
+  # geom_text(data=country_coord, aes(x=X1, y=X2-0.5, label=row.names(country_coord)), size=2, colour="white") +
+  scale_fill_gradient(name="EUR",low = "red", high = "green") + xlim(-10,30) + ylim(35,70) +
+  #labs(title = "EU Dev Gross Salaries in EU") +
+  theme(legend.justification=c(0,1), legend.position=c(0,1), 
+        panel.grid = element_blank()
+        ,axis.text = element_blank()
+        ,axis.title = element_blank()
+        ,axis.ticks = element_blank()        ) 
+
+ggplotly(map1)
+
+```
+
+### Avgerage Salary vs Experiance vs Gender
+```{r}
+temp400 <- dat1 %>%
+  filter(Count != "2 No" & Gender != "") %>%
+  group_by(Gender, ExpBucket) %>%
+  summarise(AverageGrossSalaryEUR = mean(GrossEUR), Employees = length(GrossEUR))
+
+temp400$ExpBucket <- sub("^$", "6 other", temp400$ExpBucket)
+
+SoilSciGuylabs <- c("<1", "1-3", "3-7", "7-15","15+","Other")
+
+#p4 <- ggplot(data=temp400, aes(x=ExpBucket, y= AverageGrossSalaryEUR, group=1, color=Gender, size=Employees)) + #geom_line()
+#  geom_point() + labs(x="Years of Experiance") +
+#  scale_x_discrete(labels= SoilSciGuylabs) + geom_smooth(aes(x=ExpBucket, y=AverageGrossSalaryEUR))
+#ggplotly(p4)
+
+p5 <- ggplot(data=temp400, aes(x=ExpBucket, y= AverageGrossSalaryEUR, group=1)) +
+  geom_point(aes(size=Employees, color = Gender)) + geom_line(aes(color=Gender)) + labs(x="Years of Experiance") + 
+  scale_x_discrete(labels= SoilSciGuylabs)
+ggplotly(p5)
+
+```
+
+### Average Salary Barplot
+```{r}
+temp10 <- dat1 %>%
+  filter(Count != "2 No") %>%
+  group_by(Country) %>%
+  summarise(AverageGrossSalaryEUR = mean(GrossEUR), Employees = length(GrossEUR)) %>%
+  arrange(desc(AverageGrossSalaryEUR))
+
+P1 <- ggplot(data=temp10, aes(x=reorder(Country, AverageGrossSalaryEUR), y=AverageGrossSalaryEUR )) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(name="EUR", labels = scales::comma) +
+  coord_flip() + theme(axis.title.y=element_blank())
+
+P1
+```
+
+Column {data-width=300}
+-----------------------------------------------------------------------
+
+### Top Employers
+```{r}
+temp1 <- dat1 %>%
+  filter(Count != "2 No") %>%
+  group_by(Employer2) %>%
+  summarise(AverageGrossSalaryEUR = mean(GrossEUR), Employees = length(GrossEUR)) %>%
+  mutate(Company=as.character(Employer2)) %>%
+  select(Company,AverageGrossSalaryEUR,Employees)
+
+temp2 <- slice(temp1, 2:n())
+
+#temp2$Employer2 <- sub("^$", "Other", temp2$Employer2)
+temp2$Company <- str_sub(temp2$Company, 1, 15)
+
+temp3 <- temp2 %>% arrange(desc(Employees)) %>% mutate(AverageGrossSalaryEUR = prettyNum(AverageGrossSalaryEUR, big.mark=","))  
+
+colnames(temp3) <- c('Company', 'AvgSalaryEUR', 'Count')
+
+temp3$Company[127] <- 'frandaise des j'
+temp3$Company[117] <- 'ETH Zurich'
+
+
+DT::datatable(temp3, options = list(
+  bPaginate = FALSE
+))
+```
+
